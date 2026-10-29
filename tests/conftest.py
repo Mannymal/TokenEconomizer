@@ -17,6 +17,12 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_history(tmp_path_factory, monkeypatch):
+    """No test reads the person's own Claude Code session history (`plugin.history`)."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+
+
+@pytest.fixture(autouse=True)
 def _no_model_calls(request, monkeypatch):
     """No test reaches a real agent CLI. With the loop guard on, a stuck-looking turn wakes its
     judge: the plugin's side calls answer nothing here, and a judge job runs inline instead of

@@ -24,6 +24,9 @@
                                       now (runs by itself, once, after an upgrade)
     te repos merge KEY [INTO]         merge the state directory KEY into INTO (default: this
                                       repository's), for state whose checkouts are gone
+    te history [show | run [--all]]   the sessions from before the plugin that were learned from
+                                      (Claude Code, `history=on`); `run` looks again, for this
+                                      repository or, with `--all`, every one in the session history
     te doctor                         check the installation
     te --host copilot probe           real Copilot sessions in a throwaway repository: does a
                                       learned fact change what the model does, and what does the
@@ -42,7 +45,8 @@ import sys
 import time
 
 from .. import loopguard
-from . import accounting, denylist, fold, hosts, paths, repomap, repos, sidecall, toolcheck
+from . import (accounting, denylist, fold, history, hosts, paths, repomap, repos, sidecall,
+               toolcheck)
 from .config import canonical, unset_config, write_config
 from .context import LiveContext
 from .paths import state_root
@@ -150,6 +154,12 @@ def cmd_status(args):
         print(f"  warning      {w}")
     if out["session_note"]:
         print(f"  note         {out['session_note']}")
+    if history.supports(ctx.host.name):
+        h = ctx.store.read(history.STATE) or {}
+        print("  history      " + ("off" if cfg.history == "off" else
+                                    f"{h.get('sessions', 0)} earlier session(s) learned from"
+                                    if h.get("done") else "not read yet (runs at the next "
+                                                          "session start, or `te history run`)"))
     print(f"  sessions     {ledger['sessions']} folded, "
           f"{accounting.fmt_tokens(ledger['effective_tokens'])} effective tokens, plugin "
           f"overhead {accounting.fmt_tokens(ledger['overhead_tokens'])} "
@@ -512,6 +522,38 @@ def cmd_fold(args):
     return 0
 
 
+def cmd_history(args):
+    ctx = _ctx(args)
+    if not history.supports(ctx.host.name):
+        print(f"history: not available on {ctx.host.name} (it reads Claude Code's transcripts)")
+        return 1
+    if args.action == "show":
+        print(json.dumps(ctx.store.read(history.STATE) or {}, indent=2, default=str))
+        return 0
+    if ctx.config.history == "off":
+        print("history is off (`te config set history=on`)")
+        return 1
+    if not args.all:
+        state = history.backfill(ctx, force=True)
+        print(json.dumps(state, indent=2, default=str) if state is not None
+              else "another backfill is running for this repository")
+        return 0
+    done = set()
+    for cwd, _files in history.projects(ctx.env):
+        if not os.path.isdir(cwd):
+            continue
+        rctx = LiveContext.build(ctx.host, cwd, env=ctx.env)
+        if rctx.repo.key in done:
+            continue
+        done.add(rctx.repo.key)
+        state = history.backfill(rctx, force=True)
+        last = (state or {}).get("last_run") or {}
+        print(f"{rctx.repo.label} ({rctx.repo.root}): "
+              + (f"{last.get('folded', 0)} session(s) folded, {last.get('turns', 0)} turn(s)"
+                 if state is not None else "skipped (off here, or already running)"))
+    return 0
+
+
 def cmd_judge(args):
     """The detached half of the stuck judge (see plugin/judge.py); not for people."""
     from . import judge
@@ -737,6 +779,10 @@ def build_parser():
     p.add_argument("--session", required=True)
     p.add_argument("--job", required=True)
     p.set_defaults(fn=cmd_judge)
+    p = add("history")
+    p.add_argument("action", nargs="?", default="show", choices=("show", "run"))
+    p.add_argument("--all", action="store_true")
+    p.set_defaults(fn=cmd_history)
     add("doctor").set_defaults(fn=cmd_doctor)
     p = add("repos")
     p.add_argument("action", nargs="?", default="list", choices=("list", "migrate", "merge"))

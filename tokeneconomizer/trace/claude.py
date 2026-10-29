@@ -13,6 +13,7 @@ and results included; read as calls, every call counted twice.
 import glob
 import json
 import os
+import re
 
 from .jsonl import lines as _lines
 
@@ -89,6 +90,82 @@ def claude_prompt_count(transcript_path):
             continue
         n += isinstance(ev, dict) and _is_prompt(ev)
     return n
+
+
+def claude_session_cwd(transcript_path, max_lines=200):
+    """The directory a Claude Code session started in: the first entry's `cwd`, or None."""
+    for i, line in enumerate(_lines(transcript_path)):
+        if i >= max_lines:
+            break
+        if '"cwd"' not in line:
+            continue
+        try:
+            cwd = json.loads(line).get("cwd")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(cwd, str) and cwd:
+            return cwd
+    return None
+
+
+_EXIT_RE = re.compile(r"^Exit code (\d+)", re.M)
+
+
+def claude_turns(transcript_path):
+    """Prompt-turns of a Claude Code session, as the loop guard's hooks would have seen them:
+    [(calls, ended)], `calls` a list of (name, args, result_text, exit_code_or_None) in order,
+    `ended` False for a turn the person interrupted. As in the hooks, a failed call's exit code
+    is the one its error text names ("Exit code 2"), and a call that succeeded has none.
+    A subagent's entries are its own and stay out of the turn."""
+    turns, cur, ended, pend = [], None, True, {}
+    for line in _lines(transcript_path):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict) or ev.get("type") not in CONVERSATION or \
+                ev.get("isSidechain"):
+            continue
+        content = (ev.get("message") or {}).get("content")
+        if _is_prompt(ev):
+            if cur is not None:
+                turns.append((cur, ended))
+            cur, ended, pend = [], True, {}
+            continue
+        if cur is None:
+            continue
+        if isinstance(content, str):
+            if content.startswith("[Request interrupted"):
+                ended = False
+            continue
+        if not isinstance(content, list):
+            continue
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "text" and str(b.get("text") or "").startswith(
+                    "[Request interrupted"):
+                ended = False
+            elif b.get("type") == "tool_use" and b.get("id") not in pend:
+                pend[b.get("id")] = None
+                args = b.get("input") if isinstance(b.get("input"), dict) else {}
+                cur.append([str(b.get("name") or ""), args, "", None, b.get("id")])
+            elif b.get("type") == "tool_result":
+                c = b.get("content")
+                if isinstance(c, list):
+                    c = " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+                text = c if isinstance(c, str) else ""
+                code = None
+                if b.get("is_error"):
+                    m = _EXIT_RE.search(text[:400])
+                    code = int(m.group(1)) if m else None
+                for call in cur:
+                    if call[4] == b.get("tool_use_id"):
+                        call[2], call[3] = text, code
+                        break
+    if cur is not None:
+        turns.append((cur, ended))
+    return [([tuple(c[:4]) for c in calls], ok) for calls, ok in turns]
 
 
 

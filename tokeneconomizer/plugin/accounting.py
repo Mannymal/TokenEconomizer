@@ -41,6 +41,7 @@ def summarize(records):
                    if r.get("kind") in ("session", "overhead"))
     return {
         "sessions": len(sessions),
+        "history_sessions": sum(1 for r in sessions if r.get("history")),
         "priced_sessions": len(priced),
         "effective_tokens": exec_total,
         "overhead_tokens": oh_total,

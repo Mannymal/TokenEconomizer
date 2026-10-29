@@ -3,9 +3,11 @@
 # Fails open -- with no usable Python the hook prints an empty object, which changes nothing.
 dir=$(CDPATH= cd -- "${0%/*}" && pwd)
 for py in "${TE_PYTHON:-}" python3 python; do
-  if [ -n "$py" ] && command -v "$py" >/dev/null 2>&1; then
-    exec "$py" "$dir/te_bootstrap.py" hook "$@"
-  fi
+  [ -n "$py" ] || continue
+  # Windows' Store alias (`.../WindowsApps/python3`) is on PATH even with no Python installed,
+  # and only prints where to get one.
+  case $(command -v "$py" 2>/dev/null) in ''|*/WindowsApps/*) continue ;; esac
+  exec "$py" "$dir/te_bootstrap.py" hook "$@"
 done
 # Drain stdin with a builtin (no `cat` when PATH is empty), then answer "no change".
 while IFS= read -r _line; do :; done

@@ -23,6 +23,14 @@ The defaults:
                                 turn on Claude Code and Pi, is still read, and acts as "nudge"
                                 with a warning. Every model call the plugin makes is charged to
                                 the session's ledger;
+  * history     = "on"       -- Claude Code only: the first session in a repository also folds
+                                the sessions that ran there before the plugin was installed
+                                (their transcripts under `~/.claude/projects/`, or
+                                `$CLAUDE_CONFIG_DIR`), oldest first and at most
+                                `history_sessions` of the latest ones, in the background; what
+                                they teach is learned before any new session is. Those folds make
+                                no model call: the proposer, when on, reads them at the next
+                                session it runs for;
   * shadow      = False      -- with True, every decision is computed and logged but none
                                 reaches the agent: the way to measure a mechanism before
                                 trusting it.
@@ -42,7 +50,8 @@ person can tune by hand:
   * loopguard_nudges            -- redirects per prompt-turn before the guard only notifies;
   * loopguard.<name>            -- one guard threshold, pinned over the preset and over what the
                                    repository's history learned (LOOPGUARD_KEYS);
-  * repomap, repomap_tokens, repomap_python, repomap_timeout -- the opt-in repository map.
+  * repomap, repomap_tokens, repomap_python, repomap_timeout -- the opt-in repository map;
+  * history_sessions            -- the most earlier sessions `history` folds per repository.
 
 The names before the mechanisms were renamed are read too, so an existing config file keeps
 working: `inject` (microskills), `untool` (toolprune), `spiral` (loopguard), with their
@@ -64,12 +73,13 @@ MICROSKILLS = ("off", "envfacts", "envfacts+distiller", "distiller")
 TOOLPRUNE = ("off", "propose", "auto")
 LOOPGUARD = ("off", "nudge", "stop")
 REPOMAP = ("off", "on", "start")
+HISTORY = ("off", "on")
 MODES = ("auto", "interactive", "headless")
 AGGR = ("conservative", "default", "aggressive")
 
 # What `on` turns each mechanism to, and the words read as on / off.
 ON_VALUE = {"microskills": "envfacts+distiller", "toolprune": "auto", "loopguard": "nudge",
-            "repomap": "on"}
+            "repomap": "on", "history": "on"}
 _ON = ("on", "true", "yes", "1", "enable", "enabled")
 _OFF = ("off", "false", "no", "0", "disable", "disabled")
 # Values renamed with their mechanism.
@@ -155,13 +165,15 @@ class LiveConfig:
     repomap_tokens: int = 2048
     repomap_python: str = ""
     repomap_timeout: int = 8
+    history: str = "on"
+    history_sessions: int = 200
     paid_model: str = ""
     shadow: bool = False
     vocabulary: str = "auto"
     warnings: list = field(default_factory=list)
 
     _CHOICES = {"mode": MODES, "microskills": MICROSKILLS, "toolprune": TOOLPRUNE,
-                "loopguard": LOOPGUARD, "repomap": REPOMAP, "loopguard_aggr": AGGR,
+                "loopguard": LOOPGUARD, "repomap": REPOMAP, "history": HISTORY, "loopguard_aggr": AGGR,
                 "vocabulary": ("auto", "generic", "python-git", "node-web")}
     # The smallest value a number setting takes, where it is not 1.
     _MIN = {"toolprune_quiet_minutes": 0}
@@ -259,7 +271,8 @@ _ENV = {"TE_MODE": "mode", "TE_SHADOW": "shadow",
         "TE_LOOPGUARD": "loopguard", "TE_LOOPGUARD_AGGR": "loopguard_aggr",
         "TE_LOOPGUARD_NUDGES": "loopguard_nudges",
         "TE_REPOMAP": "repomap", "TE_REPOMAP_TOKENS": "repomap_tokens",
-        "TE_REPOMAP_PYTHON": "repomap_python", "TE_REPOMAP_TIMEOUT": "repomap_timeout"}
+        "TE_REPOMAP_PYTHON": "repomap_python", "TE_REPOMAP_TIMEOUT": "repomap_timeout",
+        "TE_HISTORY": "history", "TE_HISTORY_SESSIONS": "history_sessions"}
 _ENV_THRESHOLDS = ("TE_SPIRAL_THRESHOLDS", "TE_LOOPGUARD_THRESHOLDS")
 
 

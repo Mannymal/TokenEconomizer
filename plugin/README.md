@@ -465,6 +465,8 @@ of the preset. A value you set with `loopguard.<name>` wins over both. Defaults 
 |---|---|---|
 | `paid_model` | `""` | model for the plugin's own calls; empty: `haiku` on Claude Code, the agent's own default model on Codex and Pi, on Copilot `COPILOT_PROVIDER_MODEL_ID` or `COPILOT_MODEL` (unless it is `auto`), else a BYOK provider's Haiku, else Copilot's own default |
 | `shadow` | `false` | decide and log everything, act on nothing |
+| `history` | `on` | Claude Code: the first session in a repository also learns from that repository's earlier sessions in `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR`), in the background and with no model call; a deny list they form is queued by the next session's fold, as usual. `te history run --all` does every repository now |
+| `history_sessions` | `200` | the most recent earlier sessions `history` reads per repository |
 | `mode` | `auto` | `interactive` or `headless` to override what the plugin detects |
 
 **Where settings live, and when they apply.** For one session, an environment variable wins:
