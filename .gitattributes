@@ -1,0 +1,4 @@
+# Shell scripts run as checked out, and a CRLF line ending breaks them (core.autocrlf on Windows).
+plugin/scripts/te text eol=lf
+plugin/scripts/te-hook text eol=lf
+*.sh text eol=lf
